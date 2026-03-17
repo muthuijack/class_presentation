@@ -99,13 +99,5 @@ if model is None:
     st.error("Failed to load model. Check requirements.txt")
     
     with st.expander("🔧 Fix for Streamlit Cloud (Python 3.10)"):
-        st.markdown("""
-        ### Update your `requirements.txt`:
-        ```txt
-        numpy==1.24.3
-        tensorflow==2.15.0
-        streamlit==1.31.0
-        joblib==1.3.2
-        scikit-learn==1.4.0
-        protobuf==3.20.3
-        h5py==3.11.0
+        st.markdown("")
+     
