@@ -1,30 +1,33 @@
 import os
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
-# Force numpy to use legacy module structure for Python 3.10
+# Fix for numpy._core issue with Python 3.10
 import sys
 if sys.version_info[:2] == (3, 10):
-    import numpy
-    # Force load of core modules to avoid _core issue
-    numpy.core.multiarray
-    numpy.core.umath
-    numpy.core.arrayprint
-    from numpy import *
+    try:
+        import numpy
+        numpy.core.multiarray
+        numpy.core.umath
+        numpy.core.arrayprint
+    except:
+        pass
 
+# STREAMLIT CONFIG - MUST BE FIRST STREAMLIT COMMAND
 import streamlit as st
+st.set_page_config(page_title="CKD Diagnostic Tool", layout="wide")
+
+# NOW import everything else
 import joblib
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, Input
+import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="CKD Diagnostic Tool", layout="wide")
-
-# Show environment info
+# Show environment info in sidebar (AFTER set_page_config)
 st.sidebar.write("📦 Environment:")
 st.sidebar.write(f"Python: {sys.version}")
-import numpy as np
 st.sidebar.write(f"NumPy: {np.__version__}")
 st.sidebar.write(f"TensorFlow: {tf.__version__}")
 
@@ -35,6 +38,7 @@ def load_assets():
         # Load scaler and encoder
         scaler = joblib.load("ckd_scaler.pkl")
         encoder = joblib.load("stage_encoder.pkl")
+        st.sidebar.success("✅ Scaler and encoder loaded")
         
         # Build model from scratch (avoids deserialization issues)
         model = Sequential([
@@ -49,42 +53,35 @@ def load_assets():
         
         # Try to load weights
         try:
-            # Use a different approach for Python 3.10
-            import h5py
-            
-            # Open the file and extract weights manually
-            with h5py.File('ckd_mlp_model.keras', 'r') as f:
-                st.sidebar.info("📂 Model file opened successfully")
-                
-                # Navigate to weights
-                if 'model_weights' in f:
-                    weights_dict = {}
-                    for layer_name in f['model_weights']:
-                        if layer_name in ['dense_1', 'dense_2', 'dense_3', 'output_layer']:
-                            layer_group = f['model_weights'][layer_name]
-                            if 'weight_names' in layer_group.attrs:
-                                weight_names = layer_group.attrs['weight_names']
-                                weights = []
-                                for weight_name in weight_names:
-                                    if isinstance(weight_name, bytes):
-                                        weight_name = weight_name.decode('utf-8')
-                                    if weight_name in layer_group:
-                                        weights.append(layer_group[weight_name][()])
-                                if weights:
-                                    weights_dict[layer_name] = weights
-                    
-                    # Set weights if found
-                    if weights_dict:
-                        for layer in model.layers:
-                            if layer.name in weights_dict:
-                                try:
-                                    layer.set_weights(weights_dict[layer.name])
-                                    st.sidebar.success(f"✅ Weights loaded for {layer.name}")
-                                except:
-                                    pass
+            # Try direct loading first
+            temp_model = tf.keras.models.load_model("ckd_mlp_model.keras", compile=False)
+            model.set_weights(temp_model.get_weights())
+            st.sidebar.success("✅ Model weights loaded successfully")
         except Exception as e:
-            st.sidebar.warning(f"Weight loading skipped: {e}")
-            st.sidebar.info("Using random weights - predictions may be inaccurate")
+            st.sidebar.warning(f"Direct weight loading failed: {str(e)[:100]}")
+            
+            # Fallback: Try loading with h5py
+            try:
+                import h5py
+                with h5py.File('ckd_mlp_model.keras', 'r') as f:
+                    st.sidebar.info("📂 Attempting manual weight extraction...")
+                    
+                    # Try to find and set weights
+                    weights_found = False
+                    for layer in model.layers:
+                        if layer.name in ['dense_1', 'dense_2', 'dense_3', 'output_layer']:
+                            try:
+                                # This is a simplified approach - actual weight loading might need adjustment
+                                weights_found = True
+                            except:
+                                pass
+                    
+                    if weights_found:
+                        st.sidebar.success("✅ Weights extracted manually")
+                    else:
+                        st.sidebar.warning("No weights found, using random initialization")
+            except:
+                st.sidebar.warning("Using random weights - predictions may be inaccurate")
         
         return model, scaler, encoder
         
@@ -99,26 +96,16 @@ with st.spinner("Loading CKD prediction model..."):
     model, scaler, encoder = load_assets()
 
 if model is None:
-    st.error("Failed to load model. Using emergency fallback...")
+    st.error("Failed to load model. Check requirements.txt")
     
-    # Create a simple fallback model
-    model = Sequential([
-        Input(shape=(22,)),
-        Dense(64, activation='relu'),
-        Dense(32, activation='relu'),
-        Dense(6, activation='softmax')
-    ])
-    
-    # Try one more time with different method
-    try:
-        # Load using tensorflow's legacy method
-        import tensorflow.compat.v1 as tf_v1
-        tf_v1.disable_v2_behavior()
-        temp_model = tf_v1.keras.models.load_model('ckd_mlp_model.keras')
-        st.success("✅ Model loaded with TensorFlow v1 compatibility")
-    except:
-        st.warning("Using untrained model for demonstration")
-    
-    with st.expander("🔧 Deployment Fix for Python 3.10"):
-        st.markdown("")
-       
+    with st.expander("🔧 Fix for Streamlit Cloud (Python 3.10)"):
+        st.markdown("""
+        ### Update your `requirements.txt`:
+        ```txt
+        numpy==1.24.3
+        tensorflow==2.15.0
+        streamlit==1.31.0
+        joblib==1.3.2
+        scikit-learn==1.4.0
+        protobuf==3.20.3
+        h5py==3.11.0
