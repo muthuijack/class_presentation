@@ -92,11 +92,3 @@ if model is None:
         st.markdown("")
         ### Update your GitHub repository:
         
-        1. **Create/Update `requirements.txt`**:
-        ```txt
-        numpy==1.23.5
-        tensorflow==2.13.0
-        streamlit==1.28.0
-        joblib==1.2.0
-        scikit-learn==1.3.0
-        protobuf==3.20.3
