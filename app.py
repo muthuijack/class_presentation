@@ -89,7 +89,7 @@ if model is None:
     
     # Show deployment instructions
     with st.expander("🔧 Fix for Streamlit Cloud"):
-        st.markdown("""
+        st.markdown(""
         ### Update your GitHub repository:
         
         1. **Create/Update `requirements.txt`**:
