@@ -115,7 +115,7 @@ if model is None:
     ])
     
     with st.expander("🔧 Troubleshooting Steps"):
-        st.markdown("""
+        st.markdown("")
         ### Fix for NumPy core module error:
         
-        1. **Create/update `runtime.txt`** in your repository:
+       # 1. **Create/update `runtime.txt`** in your repository:
