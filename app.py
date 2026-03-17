@@ -1,16 +1,24 @@
 import os
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
-# Fix for numpy._core issue with Python 3.10
+# Fix for numpy.core.multiarray issue
 import sys
-if sys.version_info[:2] == (3, 10):
-    try:
-        import numpy
-        numpy.core.multiarray
-        numpy.core.umath
-        numpy.core.arrayprint
-    except:
-        pass
+import subprocess
+
+# Ensure numpy is properly loaded before anything else
+try:
+    import numpy as np
+    # Force load of core modules
+    np.core.multiarray
+    np.core.umath
+    np.core.arrayprint
+except (ImportError, AttributeError) as e:
+    if 'multiarray' in str(e):
+        # Reinstall numpy if needed
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", "numpy==1.24.3"])
+        import numpy as np
+    else:
+        raise e
 
 # STREAMLIT CONFIG - MUST BE FIRST STREAMLIT COMMAND
 import streamlit as st
@@ -21,11 +29,10 @@ import joblib
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, Input
-import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 
-# Show environment info in sidebar (AFTER set_page_config)
+# Show environment info
 st.sidebar.write("📦 Environment:")
 st.sidebar.write(f"Python: {sys.version}")
 st.sidebar.write(f"NumPy: {np.__version__}")
@@ -33,14 +40,26 @@ st.sidebar.write(f"TensorFlow: {tf.__version__}")
 
 @st.cache_resource
 def load_assets():
-    """Load model with compatibility fixes for Python 3.10"""
+    """Load model with compatibility fixes"""
     try:
         # Load scaler and encoder
         scaler = joblib.load("ckd_scaler.pkl")
         encoder = joblib.load("stage_encoder.pkl")
         st.sidebar.success("✅ Scaler and encoder loaded")
         
-        # Build model from scratch (avoids deserialization issues)
+        # Try multiple methods to load model
+        model = None
+        
+        # Method 1: Try direct loading first
+        try:
+            model = tf.keras.models.load_model("ckd_mlp_model.keras", compile=False)
+            st.sidebar.success("✅ Model loaded directly")
+            return model, scaler, encoder
+        except Exception as e:
+            st.sidebar.warning(f"Direct loading failed: {str(e)[:100]}")
+        
+        # Method 2: Build from scratch
+        st.sidebar.info("Building model from scratch...")
         model = Sequential([
             Input(shape=(22,), name='input_layer'),
             Dense(128, activation='relu', name='dense_1'),
@@ -53,35 +72,13 @@ def load_assets():
         
         # Try to load weights
         try:
-            # Try direct loading first
+            # Create a temporary model just to get weights
             temp_model = tf.keras.models.load_model("ckd_mlp_model.keras", compile=False)
             model.set_weights(temp_model.get_weights())
-            st.sidebar.success("✅ Model weights loaded successfully")
+            st.sidebar.success("✅ Weights loaded into skeleton")
         except Exception as e:
-            st.sidebar.warning(f"Direct weight loading failed: {str(e)[:100]}")
-            
-            # Fallback: Try loading with h5py
-            try:
-                import h5py
-                with h5py.File('ckd_mlp_model.keras', 'r') as f:
-                    st.sidebar.info("📂 Attempting manual weight extraction...")
-                    
-                    # Try to find and set weights
-                    weights_found = False
-                    for layer in model.layers:
-                        if layer.name in ['dense_1', 'dense_2', 'dense_3', 'output_layer']:
-                            try:
-                                # This is a simplified approach - actual weight loading might need adjustment
-                                weights_found = True
-                            except:
-                                pass
-                    
-                    if weights_found:
-                        st.sidebar.success("✅ Weights extracted manually")
-                    else:
-                        st.sidebar.warning("No weights found, using random initialization")
-            except:
-                st.sidebar.warning("Using random weights - predictions may be inaccurate")
+            st.sidebar.warning(f"Weight loading failed: {e}")
+            st.sidebar.info("Using random weights - predictions may be inaccurate")
         
         return model, scaler, encoder
         
@@ -96,8 +93,16 @@ with st.spinner("Loading CKD prediction model..."):
     model, scaler, encoder = load_assets()
 
 if model is None:
-    st.error("Failed to load model. Check requirements.txt")
+    st.error("⚠️ Failed to load model. Using emergency fallback.")
     
-    with st.expander("🔧 Fix for Streamlit Cloud (Python 3.10)"):
+    # Create a simple fallback model
+    model = Sequential([
+        Input(shape=(22,)),
+        Dense(64, activation='relu'),
+        Dense(32, activation='relu'),
+        Dense(6, activation='softmax')
+    ])
+    
+    with st.expander("🔧 Fix for numpy.core.multiarray issue"):
         st.markdown("")
-     
+      
